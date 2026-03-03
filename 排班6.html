@@ -1,0 +1,953 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>国资处维修室排班系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 自定义滚动条和部分过渡效果 */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        
+        .tab-btn.active {
+            border-bottom: 2px solid #3b82f6;
+            color: #3b82f6;
+            font-weight: 600;
+        }
+        
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #e5e7eb; padding: 0.75rem; text-align: center; }
+        th { background-color: #f9fafb; font-weight: 600; color: #374151; }
+        tbody tr:nth-child(even) { background-color: #fcfcfc; }
+        
+        .schedule-cell { cursor: pointer; transition: all 0.2s; min-height: 60px; }
+        .schedule-cell:hover { background-color: #eff6ff; }
+        
+        .modal { display: none; background: rgba(0,0,0,0.5); }
+        .modal.active { display: flex; }
+        
+        #floating-panel { display: none; position: absolute; z-index: 50; }
+        #floating-panel.active { display: block; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen">
+
+    <!-- 顶部导航 -->
+    <header class="bg-white shadow-sm sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center">
+                    <svg class="w-8 h-8 text-blue-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    <h1 class="text-xl font-bold text-gray-900">国资处维修室排班系统</h1>
+                </div>
+                <div class="flex items-center">
+                    <div class="flex space-x-8">
+                        <button onclick="switchTab('personnel')" id="tab-personnel-btn" class="tab-btn active px-1 py-4 text-sm font-medium text-gray-500 hover:text-gray-700 focus:outline-none">人员管理</button>
+                        <button onclick="switchTab('schedule')" id="tab-schedule-btn" class="tab-btn px-1 py-4 text-sm font-medium text-gray-500 hover:text-gray-700 focus:outline-none">给班管理</button>
+                    </div>
+                    <!-- 导入导出数据控制区 -->
+                    <div class="flex items-center space-x-3 ml-8 border-l border-gray-200 pl-8">
+                        <input type="file" id="data-import-input" class="hidden" accept=".json" onchange="importData(event)">
+                        <button onclick="document.getElementById('data-import-input').click()" class="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors flex items-center">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                            导入数据
+                        </button>
+                        <button onclick="exportData()" class="text-sm font-medium text-gray-600 hover:text-green-600 transition-colors flex items-center">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            导出数据
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-10 py-10">
+        
+        <!-- ================= 模块一：人员管理 ================= -->
+        <div id="tab-personnel" class="space-y-6">
+            <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-100 max-w-[1000px] mx-auto">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold text-gray-800">人员列表</h2>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="exportFreeTimeCSV()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center mr-2">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            导出空闲时间CSV
+                        </button>
+                        <input type="text" id="new-person-name" placeholder="输入姓名..." class="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <button onclick="addPerson()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors">新增人员</button>
+                    </div>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="w-16">序号</th>
+                                <th>姓名</th>
+                                <th class="w-64">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="personnel-tbody">
+                            <!-- 动态渲染 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= 模块二：给班管理 ================= -->
+        <div id="tab-schedule" class="hidden space-y-6">
+            <!-- 顶部控制区 -->
+            <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex justify-between items-center">
+                <div class="flex items-center space-x-4">
+                    <label class="text-sm font-medium text-gray-700">当前周次：</label>
+                    <input type="number" id="week-selector" value="1" min="1" max="20" class="border border-gray-300 rounded-md px-3 py-1.5 w-20 text-center focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <span class="text-xs text-gray-400">（仅作显示，暂不影响排班逻辑）</span>
+                </div>
+                <button onclick="exportCSV()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    导出CSV
+                </button>
+            </div>
+
+            <!-- 主体排班区 -->
+            <div class="flex flex-col lg:flex-row gap-6">
+                <!-- 左侧排班表 -->
+                <div class="flex-1 bg-white p-6 rounded-lg shadow-sm border border-gray-100 overflow-x-auto">
+                    <table class="w-full min-w-[700px]">
+                        <thead>
+                            <tr>
+                                <th class="w-24">时段 \ 星期</th>
+                                <th>周一</th>
+                                <th>周二</th>
+                                <th>周三</th>
+                                <th>周四</th>
+                                <th>周五</th>
+                            </tr>
+                        </thead>
+                        <tbody id="schedule-tbody">
+                            <!-- 动态渲染 -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 中间状态统计侧边栏 -->
+                <div class="w-full lg:w-64 bg-white p-6 rounded-lg shadow-sm border border-gray-100 shrink-0">
+                    <h3 class="text-sm font-bold text-gray-800 border-b pb-2 mb-3">排班状态统计</h3>
+                    <div class="text-xs text-gray-500 mb-3 space-y-1">
+                        <p class="font-semibold text-blue-600">统计说明：</p>
+                        <p>仅统计大班和小班，维修班不计入。</p>
+                        <p class="pt-1">达标条件：</p>
+                        <ul class="list-disc pl-4">
+                            <li>4个小班</li>
+                            <li>1大班 + 2小班</li>
+                            <li>2大班 + 1小班</li>
+                            <li>3个及以上大班</li>
+                        </ul>
+                    </div>
+                    <ul id="status-list" class="space-y-2 text-sm max-h-[550px] overflow-y-auto pr-2">
+                        <!-- 动态渲染状态 -->
+                    </ul>
+                </div>
+
+                <!-- 右侧1-2节空闲统计侧边栏 -->
+                <div class="w-full lg:w-64 bg-white p-6 rounded-lg shadow-sm border border-gray-100 shrink-0">
+                    <h3 class="text-sm font-bold text-gray-800 border-b pb-2 mb-3">1-2节空闲统计</h3>
+                    <div class="text-xs text-gray-500 mb-3 space-y-1">
+                        <p>统计周一至周五哪天早八没有课。</p>
+                        <p>天数由高到低排序显示。</p>
+                    </div>
+                    <ul id="early-eight-list" class="space-y-2 text-sm max-h-[650px] overflow-y-auto pr-2">
+                        <!-- 动态渲染状态 -->
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- ================= 弹窗：编辑空闲时间 ================= -->
+    <div id="free-time-modal" class="modal fixed inset-0 items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-11/12 max-w-5xl max-h-[90vh] flex flex-col">
+            <div class="px-6 py-4 border-b flex justify-between items-center">
+                <h3 class="text-lg font-bold text-gray-800">编辑空闲时间 - <span id="modal-person-name" class="text-blue-600"></span></h3>
+                <button onclick="closeFreeTimeModal()" class="text-gray-400 hover:text-gray-600 focus:outline-none">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto flex-1">
+                <div class="mb-4 text-sm text-gray-500 flex items-center">
+                    <svg class="w-4 h-4 mr-1 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    勾选“此时段空闲”后，方可选择课前和课后位置。
+                </div>
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr>
+                            <th class="w-20">时段</th>
+                            <th>周一</th>
+                            <th>周二</th>
+                            <th>周三</th>
+                            <th>周四</th>
+                            <th>周五</th>
+                        </tr>
+                    </thead>
+                    <tbody id="free-time-tbody">
+                        <!-- 动态生成 -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="px-6 py-4 border-t bg-gray-50 flex justify-between space-x-3 rounded-b-lg">
+                <!-- 新增：清空所有按钮 -->
+                <button onclick="clearAllFreeTime()" class="px-4 py-2 border border-red-300 rounded-md text-red-600 bg-white hover:bg-red-50 text-sm font-medium transition-colors">清空所有空闲时间</button>
+                <div class="flex space-x-3">
+                    <button onclick="closeFreeTimeModal()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium">取消</button>
+                    <button onclick="saveFreeTime()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium">保存设置</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= 弹窗：只读查看空闲时间 ================= -->
+    <div id="view-freetime-modal" class="modal fixed inset-0 items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-xl w-11/12 max-w-4xl max-h-[90vh] flex flex-col">
+            <div class="px-6 py-4 border-b flex justify-between items-center bg-blue-50 rounded-t-lg">
+                <h3 class="text-lg font-bold text-gray-800">空闲时间一览 - <span id="view-modal-person-name" class="text-blue-700"></span></h3>
+                <button onclick="closeViewFreeTimeModal()" class="text-gray-400 hover:text-gray-600 focus:outline-none">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-6 overflow-y-auto flex-1">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr>
+                            <th class="w-20">时段</th>
+                            <th>周一</th>
+                            <th>周二</th>
+                            <th>周三</th>
+                            <th>周四</th>
+                            <th>周五</th>
+                        </tr>
+                    </thead>
+                    <tbody id="view-freetime-tbody">
+                        <!-- 动态生成 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= 悬浮面板：选择排班人员 ================= -->
+    <div id="floating-panel" class="bg-white rounded-md shadow-xl border border-gray-200 w-72 overflow-hidden">
+        <div class="bg-gray-50 px-3 py-2 border-b border-gray-200 flex justify-between items-center">
+            <span class="text-xs font-semibold text-gray-600" id="floating-title">选择人员</span>
+            <button onclick="closeFloatingPanel()" class="text-gray-400 hover:text-gray-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+        </div>
+        <div class="max-h-60 overflow-y-auto p-1" id="floating-list">
+            <!-- 动态填充 -->
+        </div>
+        <div class="p-2 border-t border-gray-200 bg-gray-50">
+            <button onclick="clearCurrentSlot()" class="w-full py-1.5 text-xs text-red-600 border border-red-200 bg-red-50 hover:bg-red-100 rounded transition-colors">清除此时段所有人</button>
+        </div>
+    </div>
+
+
+    <script>
+        // ================= 常量与配置 =================
+        const DAYS = ["周一", "周二", "周三", "周四", "周五"];
+        const PERSON_SLOTS = ["1-2节", "3-4节", "5节", "6-7节", "8节", "9节"];
+        const SCHEDULE_SLOTS = ["1-2节", "3-4-5节", "中午维修", "6-7节", "8-9节", "下午维修"];
+        const LOCATIONS = ["东区", "西区", "不上课"];
+
+        // ================= 数据状态 =================
+        let persons = [];
+        let schedule = {}; // 格式: {"周一-1-2节": ["personId1", "personId2"]}
+        let currentEditPersonId = null;
+        let currentTargetCell = null; // 记录当前点击排班的单元格信息 {day, slot}
+
+        // ================= 初始化 =================
+        window.onload = () => {
+            loadData();
+            renderPersonnelList();
+            renderSchedule();
+            updateStatsSidebar();
+            updateEarlyEightSidebar(); // 初始化早八统计
+
+            // 点击外部关闭悬浮窗
+            document.addEventListener('click', (e) => {
+                const panel = document.getElementById('floating-panel');
+                if (panel.classList.contains('active')) {
+                    if (!panel.contains(e.target) && !e.target.closest('.schedule-cell')) {
+                        closeFloatingPanel();
+                    }
+                }
+            });
+        };
+
+        function loadData() {
+            const storedPersons = localStorage.getItem('dutyPersons');
+            const storedSchedule = localStorage.getItem('dutySchedule');
+
+            if (storedPersons) {
+                persons = JSON.parse(storedPersons);
+            } else {
+                persons = [
+                    { id: "p_" + Date.now(), name: "测试人员1", freeTime: {} },
+                    { id: "p_" + (Date.now()+1), name: "测试人员2", freeTime: {} }
+                ];
+                saveData();
+            }
+
+            if (storedSchedule) {
+                let parsed = JSON.parse(storedSchedule);
+                schedule = {};
+                for (let k in parsed) {
+                    if (Array.isArray(parsed[k])) {
+                        schedule[k] = parsed[k];
+                    } else if (typeof parsed[k] === 'string') {
+                        schedule[k] = [parsed[k]];
+                    }
+                }
+            } else {
+                schedule = {};
+            }
+        }
+
+        function saveData() {
+            localStorage.setItem('dutyPersons', JSON.stringify(persons));
+            localStorage.setItem('dutySchedule', JSON.stringify(schedule));
+        }
+
+        // ================= 导入 / 导出数据 =================
+        function exportData() {
+            const data = { persons, schedule };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "排班系统配置数据.json";
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (data.persons) persons = data.persons;
+                    if (data.schedule) schedule = data.schedule;
+                    saveData();
+                    renderPersonnelList();
+                    renderSchedule();
+                    updateStatsSidebar();
+                    updateEarlyEightSidebar();
+                    alert("✅ 数据导入成功！");
+                } catch (err) {
+                    alert("❌ 文件格式错误，请导入正确的JSON数据文件！");
+                }
+                event.target.value = ''; // Reset input
+            };
+            reader.readAsText(file);
+        }
+
+        // ================= 选项卡切换 =================
+        function switchTab(tab) {
+            document.getElementById('tab-personnel').classList.add('hidden');
+            document.getElementById('tab-schedule').classList.add('hidden');
+            document.getElementById('tab-personnel-btn').classList.remove('active');
+            document.getElementById('tab-schedule-btn').classList.remove('active');
+
+            document.getElementById(`tab-${tab}`).classList.remove('hidden');
+            document.getElementById(`tab-${tab}-btn`).classList.add('active');
+
+            if (tab === 'schedule') {
+                renderSchedule();
+                updateStatsSidebar();
+                updateEarlyEightSidebar();
+                closeFloatingPanel();
+            }
+        }
+
+        // ================= 模块一：人员管理 =================
+        function renderPersonnelList() {
+            const tbody = document.getElementById('personnel-tbody');
+            tbody.innerHTML = '';
+            
+            persons.forEach((p, index) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="text-gray-500">${index + 1}</td>
+                    <td class="font-medium text-gray-800">${p.name}</td>
+                    <td>
+                        <button onclick="openFreeTimeModal('${p.id}')" class="text-blue-600 hover:text-blue-800 text-sm font-medium mr-3">编辑空闲时间</button>
+                        <button onclick="deletePerson('${p.id}')" class="text-red-600 hover:text-red-800 text-sm font-medium">删除</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function addPerson() {
+            const input = document.getElementById('new-person-name');
+            const name = input.value.trim();
+            if (!name) return alert('请输入姓名！');
+            if (persons.some(p => p.name === name)) return alert('姓名已存在！');
+
+            persons.push({
+                id: "p_" + Date.now(),
+                name: name,
+                freeTime: {}
+            });
+            input.value = '';
+            saveData();
+            renderPersonnelList();
+        }
+
+        function deletePerson(id) {
+            if (!confirm('确定删除该人员吗？相关的排班记录也会被清除。')) return;
+            persons = persons.filter(p => p.id !== id);
+            for (let key in schedule) {
+                if (Array.isArray(schedule[key])) {
+                    schedule[key] = schedule[key].filter(pid => pid !== id);
+                }
+            }
+            saveData();
+            renderPersonnelList();
+            renderSchedule();
+            updateStatsSidebar();
+            updateEarlyEightSidebar();
+        }
+
+        // --- 空闲时间设置 ---
+        function openFreeTimeModal(id) {
+            currentEditPersonId = id;
+            const person = persons.find(p => p.id === id);
+            document.getElementById('modal-person-name').innerText = person.name;
+            const tbody = document.getElementById('free-time-tbody');
+            tbody.innerHTML = '';
+
+            PERSON_SLOTS.forEach(slot => {
+                const tr = document.createElement('tr');
+                let html = `<td class="font-medium text-gray-700 bg-gray-50 align-middle">${slot}</td>`;
+                DAYS.forEach(day => {
+                    const key = `${day}-${slot}`;
+                    const timeData = person.freeTime[key] || { isFree: false, before: '不上课', after: '不上课' };
+                    html += `
+                        <td class="align-top p-2 min-w-[130px]">
+                            <div class="flex flex-col gap-2 items-center bg-white p-2 border rounded shadow-sm">
+                                <label class="text-xs font-medium cursor-pointer flex items-center gap-1 w-full justify-center">
+                                    <input type="checkbox" class="ft-checkbox w-3.5 h-3.5" data-key="${key}" ${timeData.isFree ? 'checked' : ''} onchange="toggleSlotSelects(this)"> 
+                                    此时段空闲
+                                </label>
+                                <div class="w-full flex flex-col gap-1">
+                                    <div class="flex items-center justify-between text-[11px]">
+                                        <span class="text-gray-500">上班前位置:</span>
+                                        <select class="ft-select-before w-[65px] border rounded py-0.5 text-center bg-gray-50 focus:bg-white" data-key="${key}" ${timeData.isFree ? '' : 'disabled'}>
+                                            ${LOCATIONS.map(loc => `<option value="${loc}" ${timeData.before === loc ? 'selected' : ''}>${loc}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                    <div class="flex items-center justify-between text-[11px]">
+                                        <span class="text-gray-500">上班后位置:</span>
+                                        <select class="ft-select-after w-[65px] border rounded py-0.5 text-center bg-gray-50 focus:bg-white" data-key="${key}" ${timeData.isFree ? '' : 'disabled'}>
+                                            ${LOCATIONS.map(loc => `<option value="${loc}" ${timeData.after === loc ? 'selected' : ''}>${loc}</option>`).join('')}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    `;
+                });
+                tr.innerHTML = html;
+                tbody.appendChild(tr);
+            });
+            document.getElementById('free-time-modal').classList.add('active');
+        }
+
+        function closeFreeTimeModal() {
+            document.getElementById('free-time-modal').classList.remove('active');
+            currentEditPersonId = null;
+        }
+
+        function toggleSlotSelects(checkbox) {
+            const container = checkbox.closest('td');
+            const selects = container.querySelectorAll('select');
+            selects.forEach(sel => sel.disabled = !checkbox.checked);
+        }
+
+        function clearAllFreeTime() {
+            if(!confirm("确定要清空该人员的所有空闲时间吗？")) return;
+            const checkboxes = document.querySelectorAll('.ft-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = false;
+                toggleSlotSelects(cb);
+            });
+        }
+
+        // 核心辅助方法：判断人员在特定的排班时段是否处于空闲状态
+        function isPersonFreeForScheduleSlot(person, day, scheduleSlot) {
+            const getF = (slot) => person.freeTime && person.freeTime[`${day}-${slot}`];
+
+            if (scheduleSlot === "1-2节") {
+                return getF("1-2节")?.isFree;
+            } else if (scheduleSlot === "3-4-5节") {
+                return getF("3-4节")?.isFree && getF("5节")?.isFree;
+            } else if (scheduleSlot === "中午维修") {
+                return getF("5节")?.isFree;
+            } else if (scheduleSlot === "6-7节") {
+                return getF("6-7节")?.isFree;
+            } else if (scheduleSlot === "8-9节") {
+                return getF("8节")?.isFree && getF("9节")?.isFree;
+            } else if (scheduleSlot === "下午维修") {
+                return getF("9节")?.isFree;
+            }
+            return false;
+        }
+
+        function saveFreeTime() {
+            if (!currentEditPersonId) return;
+            const person = persons.find(p => p.id === currentEditPersonId);
+            const newFreeTime = {};
+            const checkboxes = document.querySelectorAll('.ft-checkbox');
+            checkboxes.forEach(cb => {
+                const key = cb.getAttribute('data-key');
+                if (cb.checked) {
+                    const container = cb.closest('td');
+                    const before = container.querySelector('.ft-select-before').value;
+                    const after = container.querySelector('.ft-select-after').value;
+                    newFreeTime[key] = { isFree: true, before, after };
+                }
+            });
+            person.freeTime = newFreeTime;
+
+            // 检查：如果因为修改取消了空闲，把该人从对应的不合规排班中自动剔除
+            for (let key in schedule) {
+                const parts = key.split('-');
+                const day = parts[0];
+                const scheduleSlot = parts.slice(1).join('-'); // 重新组合时段
+
+                if (schedule[key] && schedule[key].includes(person.id)) {
+                    // 重新检测是否符合排班条件
+                    if (!isPersonFreeForScheduleSlot(person, day, scheduleSlot)) {
+                        schedule[key] = schedule[key].filter(id => id !== person.id);
+                    }
+                }
+            }
+
+            saveData();
+            closeFreeTimeModal();
+            renderSchedule();
+            updateStatsSidebar();
+            updateEarlyEightSidebar();
+        }
+
+        // --- 只读查看空闲时间 (从状态栏点击) ---
+        function openViewFreeTimeModal(id) {
+            const person = persons.find(p => p.id === id);
+            document.getElementById('view-modal-person-name').innerText = person.name;
+            const tbody = document.getElementById('view-freetime-tbody');
+            tbody.innerHTML = '';
+
+            PERSON_SLOTS.forEach(slot => {
+                const tr = document.createElement('tr');
+                let html = `<td class="font-medium text-gray-700 bg-gray-50 align-middle">${slot}</td>`;
+                DAYS.forEach(day => {
+                    const key = `${day}-${slot}`;
+                    const timeData = person.freeTime[key] || { isFree: false };
+                    
+                    if (timeData.isFree) {
+                        html += `<td class="p-2 align-middle bg-green-50 border-green-100 rounded">
+                                    <div class="font-bold text-green-700 text-sm mb-1">空闲</div>
+                                    <div class="text-[11px] text-green-600 font-medium whitespace-nowrap">${timeData.before} - ${timeData.after}</div>
+                                 </td>`;
+                    } else {
+                        html += `<td class="p-2 align-middle text-gray-300 bg-white">无</td>`;
+                    }
+                });
+                tr.innerHTML = html;
+                tbody.appendChild(tr);
+            });
+            document.getElementById('view-freetime-modal').classList.add('active');
+        }
+
+        function closeViewFreeTimeModal() {
+            document.getElementById('view-freetime-modal').classList.remove('active');
+        }
+
+        // ================= 导出空闲时间CSV =================
+        function exportFreeTimeCSV() {
+            let csvContent = "\uFEFF"; // BOM for Chinese Excel
+            csvContent += "时段/星期," + DAYS.join(",") + "\n";
+            
+            PERSON_SLOTS.forEach(slot => {
+                let row = [slot];
+                DAYS.forEach(day => {
+                    const key = `${day}-${slot}`;
+                    // 找出在这个时段勾选了“此时段空闲”的人
+                    const freePersons = persons
+                        .filter(p => p.freeTime && p.freeTime[key] && p.freeTime[key].isFree)
+                        .map(p => p.name);
+                    
+                    row.push(freePersons.join("、"));
+                });
+                csvContent += row.join(",") + "\n";
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `学生空闲时间统计表.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // ================= 模块二：给班管理 =================
+
+        // 获取人员状态
+        function getPersonStatus(big, small) {
+            if (big === 0 && small === 4) return 'met';
+            if (big === 0 && small > 4) return 'exceeded';
+            if (big === 1 && small === 2) return 'met';
+            if (big === 1 && small > 2) return 'exceeded';
+            if (big === 2 && small === 1) return 'met';
+            if (big === 2 && small > 1) return 'exceeded';
+            if (big >= 3 && small === 0) return 'met';
+            if (big >= 3 && small > 0) return 'exceeded';
+            return 'under';
+        }
+
+        function calculateStats() {
+            const stats = {};
+            persons.forEach(p => {
+                stats[p.id] = { big: 0, small: 0, status: 'under', name: p.name };
+            });
+
+            for (let key in schedule) {
+                const assignedIds = schedule[key] || [];
+                assignedIds.forEach(pId => {
+                    if (!stats[pId]) return;
+                    const slot = key.split('-').slice(1).join('-'); 
+                    
+                    if (slot === "中午维修" || slot === "下午维修") {
+                        return; 
+                    }
+
+                    if (slot === "3-4-5节") stats[pId].big++;
+                    else if (["1-2节", "6-7节", "8-9节"].includes(slot)) stats[pId].small++;
+                });
+            }
+
+            for (let pId in stats) {
+                const s = stats[pId];
+                s.status = getPersonStatus(s.big, s.small);
+            }
+            return stats;
+        }
+
+        function updateStatsSidebar() {
+            const stats = calculateStats();
+            const list = document.getElementById('status-list');
+            list.innerHTML = '';
+
+            persons.forEach(p => {
+                const s = stats[p.id];
+                let icon = '';
+                let style = '';
+
+                if (s.status === 'met') {
+                    icon = `<svg class="w-4 h-4 text-green-500 inline ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>`;
+                    style = 'text-gray-400 line-through';
+                } else if (s.status === 'exceeded') {
+                    icon = `<svg class="w-4 h-4 text-red-500 inline ml-1" title="已超出达标条件" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>`;
+                    style = 'text-red-500 font-bold';
+                } else {
+                    icon = `<span class="text-xs text-gray-400 ml-1">(${s.big}大${s.small}小)</span>`;
+                    style = 'text-gray-800 font-medium';
+                }
+
+                list.innerHTML += `
+                    <li class="flex items-center justify-between p-2 rounded bg-gray-50 border border-transparent ${s.status !== 'under' ? 'opacity-80' : 'border-gray-100'}">
+                        <span class="${style} cursor-pointer hover:underline hover:text-blue-600 transition-colors" onclick="openViewFreeTimeModal('${p.id}')" title="点击查看空闲时间">${p.name}</span>
+                        <span>${icon}</span>
+                    </li>
+                `;
+            });
+        }
+
+        // 新增：早八（1-2节）空闲统计
+        function updateEarlyEightSidebar() {
+            const list = document.getElementById('early-eight-list');
+            list.innerHTML = '';
+            
+            // 计算每个人1-2节的空闲情况
+            const earlyEightStats = persons.map(p => {
+                let count = 0;
+                let freeDays = [];
+                DAYS.forEach(day => {
+                    const key = `${day}-1-2节`;
+                    if (p.freeTime && p.freeTime[key] && p.freeTime[key].isFree) {
+                        count++;
+                        freeDays.push(day);
+                    }
+                });
+                return { id: p.id, name: p.name, count, freeDays };
+            });
+            
+            // 按天数从高到低排序
+            earlyEightStats.sort((a, b) => b.count - a.count);
+            
+            earlyEightStats.forEach(s => {
+                list.innerHTML += `
+                    <li class="p-2 rounded bg-gray-50 border border-gray-100 flex flex-col gap-1 hover:bg-white transition-colors">
+                        <div class="flex justify-between items-center">
+                            <span class="font-medium text-gray-800 text-[13px]">${s.name}</span>
+                            <span class="text-xs font-bold ${s.count > 0 ? 'text-blue-600' : 'text-gray-400'}">共 ${s.count} 天</span>
+                        </div>
+                        ${s.count > 0 ? `<div class="text-xs text-gray-500 mt-0.5">日期: <span class="text-gray-700">${s.freeDays.join('、')}</span></div>` : ''}
+                    </li>
+                `;
+            });
+        }
+
+        function renderSchedule() {
+            const tbody = document.getElementById('schedule-tbody');
+            tbody.innerHTML = '';
+            const stats = calculateStats();
+
+            SCHEDULE_SLOTS.forEach(slot => {
+                const tr = document.createElement('tr');
+                let slotLabel = slot;
+                if (["1-2节", "6-7节", "8-9节"].includes(slot)) slotLabel += '<br><span class="text-xs font-normal text-gray-500">小班</span>';
+                else if (slot === "3-4-5节") slotLabel += '<br><span class="text-xs font-normal text-blue-500">大班</span>';
+                else slotLabel += '<br><span class="text-xs font-normal text-gray-400 italic">不计入统计</span>';
+
+                let html = `<td class="font-medium text-gray-700 bg-gray-50 leading-tight align-middle">${slotLabel}</td>`;
+                DAYS.forEach(day => {
+                    const key = `${day}-${slot}`;
+                    const assignedIds = schedule[key] || [];
+                    let cellContent = '';
+                    
+                    if (assignedIds.length === 0) {
+                        cellContent = `<div class="w-full h-full min-h-[50px] flex items-center justify-center text-gray-300 text-xs">+ 选择</div>`;
+                    } else {
+                        const validIds = assignedIds.filter(id => persons.some(p => p.id === id));
+                        if (validIds.length !== assignedIds.length) {
+                            schedule[key] = validIds;
+                            saveData();
+                        }
+                        cellContent = `<div class="flex flex-col gap-1.5 w-full items-center justify-center p-1">`;
+                        validIds.forEach(id => {
+                            const p = persons.find(x => x.id === id);
+                            if (p) {
+                                const isExceeded = stats[id].status === 'exceeded';
+                                const colorClass = isExceeded 
+                                    ? 'bg-red-50 text-red-700 border-red-200' 
+                                    : 'bg-blue-50 text-blue-700 border-blue-100';
+                                cellContent += `<span class="font-bold border px-2 py-1 rounded text-[13px] w-full shadow-sm block ${colorClass}">${p.name}</span>`;
+                            }
+                        });
+                        cellContent += `</div>`;
+                    }
+                    html += `<td class="schedule-cell relative align-top p-1" onclick="openAssignDropdown('${day}', '${slot}', event, this)">
+                                ${cellContent}
+                             </td>`;
+                });
+                tr.innerHTML = html;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function getAvailablePersonsForSlot(day, scheduleSlot) {
+            const stats = calculateStats();
+            let available = [];
+
+            persons.forEach(p => {
+                let isFree = isPersonFreeForScheduleSlot(p, day, scheduleSlot);
+                let before = "";
+                let after = "";
+
+                // 获取课前课后的位置展示
+                if (isFree) {
+                    const getF = (slot) => p.freeTime && p.freeTime[`${day}-${slot}`];
+                    if (scheduleSlot === "1-2节") {
+                        let f = getF("1-2节"); before = f.before; after = f.after;
+                    } else if (scheduleSlot === "3-4-5节") {
+                        let f34 = getF("3-4节"); let f5 = getF("5节"); before = f34.before; after = f5.after;
+                    } else if (scheduleSlot === "中午维修") {
+                        let f = getF("5节"); before = f.before; after = f.after;
+                    } else if (scheduleSlot === "6-7节") {
+                        let f = getF("6-7节"); before = f.before; after = f.after;
+                    } else if (scheduleSlot === "8-9节") {
+                        let f8 = getF("8节"); let f9 = getF("9节"); before = f8.before; after = f9.after;
+                    } else if (scheduleSlot === "下午维修") {
+                        let f = getF("9节"); before = f.before; after = f.after;
+                    }
+
+                    let hasShiftToday = false;
+                    for(let key in schedule) {
+                        if (key.startsWith(day + "-") && (schedule[key] || []).includes(p.id) && key !== `${day}-${scheduleSlot}`) {
+                            hasShiftToday = true;
+                        }
+                    }
+                    available.push({
+                        id: p.id,
+                        name: p.name,
+                        before,
+                        after,
+                        status: stats[p.id]?.status || 'under',
+                        hasShiftToday
+                    });
+                }
+            });
+
+            available.sort((a, b) => {
+                const weight = { 'under': 0, 'met': 1, 'exceeded': 2 };
+                return weight[a.status] - weight[b.status];
+            });
+            return available;
+        }
+
+        function renderFloatingList(day, slot) {
+            const listDiv = document.getElementById('floating-list');
+            const available = getAvailablePersonsForSlot(day, slot);
+            listDiv.innerHTML = '';
+
+            if (available.length === 0) {
+                listDiv.innerHTML = `<div class="p-4 text-center text-xs text-gray-500">此时段无空闲人员</div>`;
+                return;
+            }
+
+            const currentAssignedIds = schedule[`${day}-${slot}`] || [];
+
+            available.forEach(p => {
+                const item = document.createElement('div');
+                let nameStyle = 'font-medium text-gray-800';
+                if (p.status === 'met') {
+                    nameStyle = 'line-through text-gray-400';
+                } else if (p.status === 'exceeded') {
+                    nameStyle = 'text-red-500 font-bold';
+                }
+
+                let warnIcon = p.hasShiftToday ? `<svg class="w-3 h-3 text-orange-500 inline ml-1" title="今天已有排班" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>` : '';
+                let exceedIcon = p.status === 'exceeded' ? `<svg class="w-3 h-3 text-red-500 inline ml-1" title="超标" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>` : '';
+
+                const isAssigned = currentAssignedIds.includes(p.id);
+                const bgClass = isAssigned ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-100 border-transparent';
+
+                item.className = `p-2 mb-1 rounded cursor-pointer border text-xs flex justify-between items-center transition-colors ${bgClass}`;
+                item.onclick = (e) => {
+                    e.stopPropagation();
+                    toggleAssignPerson(day, slot, p.id);
+                };
+
+                item.innerHTML = `
+                    <div class="flex-1 truncate">
+                        <span class="text-gray-500">[${p.before}]</span> 
+                        <span class="${nameStyle} ml-1 text-[13px]">${p.name}</span>${exceedIcon}${warnIcon}
+                        <span class="text-gray-500 ml-1">[${p.after}]</span>
+                    </div>
+                    ${isAssigned ? '<svg class="w-4 h-4 text-blue-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>' : ''}
+                `;
+                listDiv.appendChild(item);
+            });
+        }
+
+        function openAssignDropdown(day, slot, event, cellElement) {
+            if(event) event.stopPropagation();
+            currentTargetCell = { day, slot };
+            const panel = document.getElementById('floating-panel');
+            document.getElementById('floating-title').innerText = `${day} ${slot} 可用人员`;
+            renderFloatingList(day, slot);
+
+            const rect = cellElement.getBoundingClientRect();
+            let topPos = rect.bottom + window.scrollY + 5;
+            if (topPos + panel.offsetHeight > window.innerHeight + window.scrollY) {
+                topPos = rect.top + window.scrollY - panel.offsetHeight - 5;
+            }
+            let leftPos = rect.left + window.scrollX;
+            if (leftPos + panel.offsetWidth > window.innerWidth + window.scrollX) {
+                leftPos = window.innerWidth + window.scrollX - panel.offsetWidth - 10;
+            }
+
+            panel.style.top = `${topPos}px`;
+            panel.style.left = `${leftPos}px`;
+            panel.classList.add('active');
+        }
+
+        function closeFloatingPanel() {
+            document.getElementById('floating-panel').classList.remove('active');
+            currentTargetCell = null;
+        }
+
+        function toggleAssignPerson(day, slot, personId) {
+            const key = `${day}-${slot}`;
+            if (!schedule[key]) schedule[key] = [];
+            const index = schedule[key].indexOf(personId);
+            if (index > -1) schedule[key].splice(index, 1);
+            else schedule[key].push(personId);
+
+            saveData();
+            renderSchedule();
+            updateStatsSidebar();
+            if (currentTargetCell && currentTargetCell.day === day && currentTargetCell.slot === slot) {
+                renderFloatingList(day, slot);
+            }
+        }
+
+        function clearCurrentSlot() {
+            if (!currentTargetCell) return;
+            const key = `${currentTargetCell.day}-${currentTargetCell.slot}`;
+            if (schedule[key]) {
+                delete schedule[key];
+                saveData();
+                renderSchedule();
+                updateStatsSidebar();
+                renderFloatingList(currentTargetCell.day, currentTargetCell.slot);
+            }
+        }
+
+        function exportCSV() {
+            let csvContent = "\uFEFF"; 
+            const weekNum = document.getElementById('week-selector').value;
+            csvContent += `排班表 (第${weekNum}周)\n`;
+            csvContent += "时段/星期," + DAYS.join(",") + "\n";
+            SCHEDULE_SLOTS.forEach(slot => {
+                let row = [slot];
+                DAYS.forEach(day => {
+                    const assignedIds = schedule[`${day}-${slot}`] || [];
+                    if (assignedIds.length > 0) {
+                        const names = assignedIds.map(id => {
+                            const p = persons.find(x => x.id === id);
+                            return p ? p.name : "";
+                        }).filter(n => n !== "");
+                        row.push(names.join("、"));
+                    } else row.push("");
+                });
+                csvContent += row.join(",") + "\n";
+            });
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `勤工俭学排班表_第${weekNum}周.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
